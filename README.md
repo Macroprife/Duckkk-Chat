@@ -58,8 +58,6 @@ duck.usage_stats   -- Token 用量统计
 
 ```bash
 # 每小时自动轮换云端访问密码
-# 查看当前密码
-cat /tmp/duck-cloud-secret.txt
 ```
 
 ## 依赖
