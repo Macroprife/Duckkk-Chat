@@ -1,0 +1,29 @@
+# ── Secrets ──
+.env
+*.pid
+cloud-secret.txt
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# ── IDE ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+
+# ── Docker ──
+*.tar.gz

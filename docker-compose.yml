@@ -1,0 +1,42 @@
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    # Bind to loopback only; never expose to LAN/WAN.
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: duck
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: duck
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U duck -d duck"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: .
+    network_mode: host
+    restart: unless-stopped
+    env_file: .env
+    # Mount the secret directory (not the file): allows atomic rename to be visible.
+    volumes:
+      - /etc/duck-secrets:/app/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+
+volumes:
+  pgdata:

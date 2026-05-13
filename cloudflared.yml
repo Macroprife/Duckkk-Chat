@@ -1,0 +1,7 @@
+tunnel: duck
+credentials-file: /root/.cloudflared/duck.json
+
+ingress:
+  - hostname: duckchat.example.com
+    service: http://localhost:8080
+  - service: http_status:404
