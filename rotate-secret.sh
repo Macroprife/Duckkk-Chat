@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-SECRETS_DIR="${DUCK_SECRETS_DIR:-/etc/duck-secrets}"
+SECRETS_DIR="${DUCK_SECRETS_DIR:-$HOME/.duck-secrets}"
 SECRET_FILE="$SECRETS_DIR/cloud-secret.txt"
 LEGACY_LINK="/tmp/duck-cloud-secret.txt"
 

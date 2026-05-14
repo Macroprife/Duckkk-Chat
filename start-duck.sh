@@ -68,11 +68,11 @@ echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━
 echo -e "${GREEN}  🦆 Duck Chat 已就绪！${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo -e "  ${CYAN}http://localhost:8080/ui${NC}   (本机)"
+echo -e "  ${CYAN}http://localhost:8080${NC}   (本机)"
 echo ""
 
 if [ -n "$TUNNEL_URL" ]; then
-  FULL_URL="${TUNNEL_URL}/ui"
+  FULL_URL="${TUNNEL_URL}"
   echo -e "  ${GREEN}☁️  手机访问:${NC}"
   echo -e "  ${CYAN}${FULL_URL}${NC}"
   echo ""

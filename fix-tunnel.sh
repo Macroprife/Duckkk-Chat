@@ -1,32 +1,38 @@
 #!/usr/bin/env bash
-# 🔧 Duck Chat — 隧道修复脚本
-# 网站打不开时运行此脚本即可恢复
-# 用法: bash fix-tunnel.sh
-
 set -euo pipefail
 
-echo "🔧 Duck Chat 隧道修复中..."
+# 🔧 Duck Chat 隧道修复 + 密码轮换
+# 网站打不开时运行此脚本，自动修复并告知信息
+# 用法: bash fix-tunnel.sh
 
-# 1. 检查 Duck Chat 是否运行
-if ! curl -sf http://localhost:8080/ui >/dev/null 2>&1; then
-  echo "🐳 启动 Duck Chat 容器..."
-  cd "$(dirname "$0")" && docker compose up -d 2>&1 | tail -1
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+echo -e "${CYAN}🔧 Duck Chat 隧道修复中...${NC}"
+
+# ── 1. 检查服务是否活着 ────────────────────────────────
+if ! curl -sf http://localhost:8080/health >/dev/null 2>&1; then
+  echo -e "${YELLOW}🐳 Duck Chat 未运行，启动容器...${NC}"
+  cd "$ROOT" && docker compose up -d 2>&1 | tail -1
   sleep 3
 fi
 
-# 2. 清理旧隧道
-echo "☠️  关闭旧隧道..."
+# ── 2. 干掉旧隧道 ──────────────────────────────────────
+echo -e "${YELLOW}☠️  关闭旧隧道...${NC}"
 docker rm -f duck-tunnel 2>/dev/null || true
+kill "$(cat /tmp/duck-tunnel.pid 2>/dev/null)" 2>/dev/null || true
 
-# 3. 重建隧道
-# --dns-opt use-vc 强制 TCP DNS，绕过运营商/网络 UDP DNS 劫持
-echo "☁️  新建 Cloudflare 隧道..."
+# ── 3. 重建隧道 ──────────────────────────────────────────
+echo -e "${YELLOW}☁️  新建 Cloudflare 隧道...${NC}"
 docker run -d --name duck-tunnel --restart unless-stopped \
   --dns 1.1.1.1 --dns-opt use-vc \
   --network host \
   cloudflare/cloudflared:latest tunnel --url http://localhost:8080 >/dev/null 2>&1
 
-# 4. 等待隧道建立
 echo -n "⏳ 等待隧道建立"
 URL=""
 for i in $(seq 1 20); do
@@ -37,19 +43,26 @@ for i in $(seq 1 20); do
 done
 echo ""
 
-# 5. 输出结果
+# ── 4. 轮换密码 ──────────────────────────────────────────
+bash "$ROOT/rotate-secret.sh" 2>/dev/null || true
+
+# ── 5. 输出 ──────────────────────────────────────────────
+PASSWORD=$(cat /etc/duck-secrets/cloud-secret.txt 2>/dev/null || cat /tmp/duck-cloud-secret.txt 2>/dev/null || echo '查看 cat /etc/duck-secrets/cloud-secret.txt')
+
+echo ""
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}  ✅ Duck Chat 已恢复！${NC}"
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
 if [ -n "$URL" ]; then
-  echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  ✅ Duck Chat 已恢复！"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo ""
-  echo "  手机打开:"
-  echo "  ${URL}/ui"
-  echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo -e "  ${GREEN}📱 手机浏览器打开:${NC}"
+  echo -e "  ${CYAN}${URL}${NC}"
 else
-  echo ""
-  echo "❌ 隧道建立超时，排查命令："
-  echo "   docker logs duck-tunnel --tail 20"
+  echo -e "  ${YELLOW}⚠️  隧道未获取到地址，手动排查:${NC}"
+  echo -e "     ${YELLOW}docker logs duck-tunnel --tail 20${NC}"
 fi
+echo ""
+echo -e "  ${YELLOW}🔑 当前云端密码: ${PASSWORD}${NC}"
+echo ""
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

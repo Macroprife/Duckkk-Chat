@@ -93,6 +93,9 @@ CREATE INDEX IF NOT EXISTS idx_conversations_recent  ON duck.conversations(sessi
 CREATE INDEX IF NOT EXISTS idx_usage_stats_created   ON duck.usage_stats(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_usage_stats_model     ON duck.usage_stats(model_id);
 CREATE INDEX IF NOT EXISTS idx_usage_stats_provider  ON duck.usage_stats(provider);
+
+-- v3: archived_at for conversation cleanup (no cascade data loss)
+ALTER TABLE duck.conversations ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 """
 
 
@@ -321,7 +324,7 @@ async def get_session_conversations(
         """
         SELECT id, title, model_id, provider, created_at, updated_at
         FROM duck.conversations
-        WHERE session_id = $1
+        WHERE session_id = $1 AND archived_at IS NULL
         ORDER BY updated_at DESC
         LIMIT $2
         """,

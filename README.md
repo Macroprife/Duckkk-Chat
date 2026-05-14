@@ -1,66 +1,91 @@
-# 🦆 DuckSay
+# 🦆 Duck Chat
 
-> 流式 LLM 聊天代理 + PostgreSQL 持久化 + Cloudflare Tunnel 公网访问
+LLM 流式代理 + 浏览器聊天界面。支持 Ollama（本地）和 OpenClaw（云端），
+**内置 PostgreSQL 持久化存储**。
 
-支持 **Ollama（本地）** 和 **OpenClaw（云端）** 双模型源，自动记录聊天历史与使用统计。
-
-## 快速开始
-
-```bash
-# 1. 配置
-cp .env.example .env
-# 编辑 .env 填入你的密钥
-
-# 2. 启动
-docker compose up -d --build
-
-# 3. 打开浏览器
-open http://localhost:8080/ui
-```
-
-## 架构
-
-```
-手机/浏览器 → Cloudflare Tunnel → Nginx(:8080) → FastAPI(:8000) → PostgreSQL(:5432)
-                                                                  ↘ Ollama / OpenClaw
-```
-
-## 服务
-
-| 服务 | 端口 | 说明 |
-|------|------|------|
-| Nginx | 8080 | 反向代理 / 静态资源 |
-| FastAPI | 8000 | 聊天 API + UI |
-| PostgreSQL | 5432 | 持久化存储 |
-
-## API
-
-| 端点 | 说明 | 鉴权 |
-|------|------|------|
-| `GET /ui` | 聊天界面 | 无 |
-| `POST /chat` | 流式聊天 | 部分需 `x-cloud-key` |
-| `GET /models` | 模型列表 | 云端需 key |
-| `POST /auth/cloud` | 云端密钥验证 | 限流 10/60s |
-| `GET /api/conversations` | 对话历史 | Cookie |
-| `GET /api/conversations/{id}` | 对话详情 | Cookie + 所有权 |
-| `GET /api/stats/usage` | 用量统计 | Header key |
-
-## 数据库
-
-```sql
-duck.sessions      -- 浏览器会话
-duck.conversations -- 对话分组
-duck.messages      -- 聊天消息
-duck.usage_stats   -- Token 用量统计
-```
-
-## 密钥轮换
+**一句话部署：**
 
 ```bash
-# 每小时自动轮换云端访问密码
+git clone <仓库地址> duck-chat && cd duck-chat
+cp .env.example .env   # 编辑 .env 填入 DEEPSEEK_API_KEY
+./start.sh             # docker compose up -d --build
 ```
 
-## 依赖
+浏览器打开 `http://localhost:8080/ui` 开始聊天。
 
-- Docker & Docker Compose v2
-- Python 3.11+（仅在手动运行时需要）
+---
+
+## 🌟 功能特性
+
+- **双模型源** – Ollama 本地模型 + OpenClaw 云端模型
+- **流式输出** – SSE 实时显示 token
+- **云端认证** – 云端模型需要密钥访问
+- **PostgreSQL 持久化** – 消息历史、会话信息、使用统计自动入库
+- **历史查看 API** – 查询过去的对话记录
+- **使用统计 API** – 按模型聚合 token 消耗统计
+
+## 环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `DEEPSEEK_API_KEY` | — | **必填** |
+| `PORT` | `8080` | 对外暴露端口 |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | 模型名 |
+| `DEEPSEEK_TIMEOUT` | `60` | 请求超时（秒） |
+| `CLOUD_AUTH_KEY` | `changeme` | 云端模型访问密钥 |
+| `DATABASE_URL` | `postgresql://duck:duck@localhost:5432/duck` | PostgreSQL 连接串 |
+
+## 数据库 schema
+
+| 表 | 作用 |
+|------|------|
+| `duck.sessions` | 浏览器会话 / 客户端信息 |
+| `duck.conversations` | 每次对话（用户一次聊天请求） |
+| `duck.messages` | 单条消息（user / assistant） |
+| `duck.usage_stats` | Token 使用统计（用于分析） |
+
+自动建表，无需手动干预。
+
+## API 端点
+
+| 路径 | 方法 | 说明 |
+|------|------|------|
+| `/ui` | GET | 聊天界面 |
+| `/chat` | POST | 发送消息（流式返回） |
+| `/models` | GET | 列出可用模型 |
+| `/auth/cloud` | POST | 云模型密钥验证 |
+| `/api/conversations` | GET | 当前会话的对话列表 |
+| `/api/conversations/{id}` | GET | 某次对话的完整消息 |
+| `/api/stats/usage` | GET | Token 使用统计 |
+| `/health` | GET | 健康检查 |
+
+## 无 Docker 环境
+
+```bash
+# 需要本地运行 PostgreSQL（或远程）
+pip install -r requirements.txt
+DATABASE_URL=postgresql://... uvicorn app:app --reload --host 0.0.0.0
+```
+
+## 架构支持
+
+- ✅ amd64（Intel / AMD）
+- ✅ arm64（Apple Silicon Mac、树莓派、Oracle ARM）
+
+## 常用命令
+
+```bash
+docker compose up -d         # 启动
+docker compose down          # 停止（数据库数据保留在卷中）
+docker compose down -v       # 💥 停止并删除数据库数据
+docker compose logs -f       # 看日志
+docker compose restart       # 重启
+docker compose pull          # 拉取 nginx 新镜像
+```
+
+## 数据库查看
+
+```bash
+# 进入 PostgreSQL 容器查看数据
+docker exec -it duck-myapi-postgres-1 psql -U duck -d duck -c "SELECT * FROM duck.usage_stats ORDER BY created_at DESC LIMIT 10;"
+```
