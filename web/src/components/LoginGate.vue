@@ -42,8 +42,11 @@
           <div>
             <select v-model="secQuestion" class="input-field text-center">
               <option value="" disabled>请选择密保问题</option>
-              <option value="你最喜欢的一首歌">你最喜欢的一首歌</option>
-              <option value="你最喜欢的一部电影">你最喜欢的一部电影</option>
+              <option value="您第一份工作的公司名称是什么？">您第一份工作的公司名称是什么？</option>
+              <option value="您出生的医院名称是？">您出生的医院名称是？</option>
+              <option value="您小学的班主任姓什么？">您小学的班主任姓什么？</option>
+              <option value="您第一次旅行的城市是？">您第一次旅行的城市是？</option>
+              <option value="您童年最要好的朋友名字是什么？">您童年最要好的朋友名字是什么？</option>
             </select>
           </div>
           <div><input v-model="secAnswer" class="input-field text-center" placeholder="自定义答案（区分大小写）" /></div>
@@ -170,7 +173,6 @@ async function handleLogin() {
       loginPass.value = ''
       captchaMode.value = 'login'
       captchaToken.value = data.username
-      sessionToken.value = data.token || ''
       flow.value = 'login-captcha'
       await loadCaptcha()
     } else {
@@ -236,7 +238,6 @@ function goRegister3() {
 // Captcha
 const captchaMode = ref('login')
 const captchaToken = ref('')
-const sessionToken = ref('')
 const captchaQuestion = ref(''); const captchaAnswer = ref('')
 const captchaError = ref(''); const captchaLoading = ref(false)
 const captchaAttempts = ref(0)
@@ -282,7 +283,7 @@ async function handleCaptcha() {
   // Captcha correct — proceed
   captchaLoading.value = true
   if (isLogin) {
-    setAuthed(captchaToken.value, sessionToken.value)
+    setAuthed(captchaToken.value)
     emit('authed')
   } else {
     try {

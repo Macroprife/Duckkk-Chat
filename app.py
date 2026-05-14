@@ -9,6 +9,7 @@ import time
 import ipaddress
 import asyncio
 import re
+import hashlib
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from collections import deque
@@ -807,12 +808,57 @@ async def usage_stats(
 
 
 
-# ── Auth Gate API ──────────────────────────────────────────────
+
+
+# ── Prometheus metrics endpoint ─────────────────────────────────
+
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+
+@app.get("/metrics")
+async def metrics():
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+# ── Auth Gate API (with rate limiting) ──────────────────────────
+
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc):
+    import auth as auth_mod
+    auth_mod.rate_limit_exceeded.labels(endpoint=request.url.path).inc()
+    return JSONResponse({"error": "请求过于频繁，请稍后再试"}, status_code=429)
+
+
+@app.post("/api/auth/check-username")
+@limiter.limit("30/minute")
+async def check_username(request: Request):
+    body = await request.json()
+    username = (body.get("username") or "").strip()
+    if not username:
+        return {"exists": False}
+    user = await db.get_user_by_username(username)
+    return {"exists": user is not None}
+
+
+@app.post("/api/auth/captcha")
+@limiter.limit("10/minute")
+async def get_captcha(request: Request):
+    import auth as auth_mod
+    auth_mod.captcha_generated.inc()
+    question, answer = auth_mod.generate_math_captcha()
+    return JSONResponse({"question": question, "answer": answer})
+
 
 @app.post("/api/auth/register")
-async def register(req: Request):
+@limiter.limit("5/hour")
+async def register(request: Request):
     import auth as auth_mod
-    body = await req.json()
+    body = await request.json()
     username = (body.get("username") or "").strip()
     password = body.get("password") or ""
     sec_q = (body.get("security_question") or "").strip()
@@ -824,29 +870,34 @@ async def register(req: Request):
         return JSONResponse({"error": "用户名只能包含字母和数字"}, status_code=400)
     if len(password) < 8:
         return JSONResponse({"error": "密码不少于8个字符"}, status_code=400)
-    if sec_q not in ("你最喜欢的一首歌", "你最喜欢的一部电影"):
-        return JSONResponse({"error": "请选择密保问题"}, status_code=400)
+    # Validate security question is one of the approved list
+    import auth as auth_mod2
+    if sec_q not in auth_mod2.SECURITY_QUESTIONS:
+        return JSONResponse({"error": "无效的密保问题"}, status_code=400)
     if not sec_a:
         return JSONResponse({"error": "密保答案不能为空"}, status_code=400)
-    if not getattr(req.app.state, "db_ok", False):
+    if not getattr(request.app.state, "db_ok", False):
         return JSONResponse({"error": "数据库不可用"}, status_code=503)
 
     existing_users = await db.count_users()
     if existing_users >= 500:
         return JSONResponse({"error": "注册名额已满(上限500)"}, status_code=403)
 
-    pw_hash = auth_mod.hash_password(password)
-    sec_hash = auth_mod.hash_password(sec_a)
+    pw_hash = auth_mod2.hash_password(password)
+    sec_hash = auth_mod2.hash_password(sec_a)
     user = await db.create_user(username, pw_hash, sec_q, sec_hash)
     if not user:
         return JSONResponse({"error": "该用户名已被注册"}, status_code=409)
+
+    auth_mod2.auth_requests.labels(endpoint="register", status="success").inc()
     return {"ok": True, "username": user["username"]}
 
 
 @app.post("/api/auth/login")
-async def login(req: Request):
+@limiter.limit("10/5minute")
+async def login(request: Request, response: Response):
     import auth as auth_mod
-    body = await req.json()
+    body = await request.json()
     username = (body.get("username") or "").strip()
     password = body.get("password") or ""
 
@@ -856,41 +907,51 @@ async def login(req: Request):
     if not user:
         return JSONResponse({"error": "未检索到该账号，请注册"}, status_code=404)
     if not auth_mod.check_password(password, user["password_hash"]):
+        auth_mod.login_attempts.labels(status="failure").inc()
         return JSONResponse({"error": "密码错误"}, status_code=401)
 
-    # New login → invalidate old session, generate new token
+    # Generate session token
     raw_token, token_hash = auth_mod.generate_session_token()
     await db.set_user_token(username, token_hash)
 
-    return {"ok": True, "username": user["username"], "token": raw_token}
+    # Set HttpOnly cookie (NOT localStorage)
+    response.set_cookie(
+        key="session_token",
+        value=raw_token,
+        max_age=7 * 24 * 3600,  # 7 days
+        httponly=True,
+        samesite="lax",
+        secure=os.environ.get("COOKIE_SECURE", "0") == "1",
+    )
 
-
-@app.post("/api/auth/captcha")
-async def get_captcha():
-    import auth as auth_mod
-    question, answer = auth_mod.generate_math_captcha()
-    return JSONResponse({"question": question, "answer": answer})
+    auth_mod.login_attempts.labels(status="success").inc()
+    auth_mod.auth_requests.labels(endpoint="login", status="success").inc()
+    return {"ok": True, "username": user["username"]}
 
 
 @app.post("/api/auth/verify")
-async def verify_token(req: Request):
-    body = await req.json()
-    raw_token = (body.get("token") or "").strip()
-    username = (body.get("username") or "").strip()
+@limiter.limit("30/minute")
+async def verify_token(request: Request):
+    # Read token from HttpOnly cookie instead of request body
+    raw_token = request.cookies.get("session_token", "")
+    body = await request.json()
+    username = (body.get("username") or "").strip().lower()
+
     if not raw_token or not username:
         return {"valid": False}
+
     stored_hash = await db.get_user_token_hash(username)
     if not stored_hash:
         return {"valid": False}
-    import hashlib
+
     given_hash = hashlib.sha256(raw_token.encode()).hexdigest()
     return {"valid": given_hash == stored_hash}
 
 
 @app.post("/api/auth/security")
-async def get_security_question(req: Request):
-    """Return the security question for a given username."""
-    body = await req.json()
+@limiter.limit("20/minute")
+async def get_security_question(request: Request):
+    body = await request.json()
     username = (body.get("username") or "").strip()
     if not username:
         return JSONResponse({"error": "请输入用户名"}, status_code=400)
@@ -901,9 +962,10 @@ async def get_security_question(req: Request):
 
 
 @app.post("/api/auth/verify-security")
-async def verify_security(req: Request):
+@limiter.limit("10/minute")
+async def verify_security(request: Request):
     import auth as auth_mod
-    body = await req.json()
+    body = await request.json()
     username = (body.get("username") or "").strip()
     answer = (body.get("answer") or "").strip()
     if not username or not answer:
@@ -918,9 +980,10 @@ async def verify_security(req: Request):
 
 
 @app.post("/api/auth/reset-password")
-async def reset_password(req: Request):
+@limiter.limit("5/hour")
+async def reset_password(request: Request):
     import auth as auth_mod
-    body = await req.json()
+    body = await request.json()
     username = (body.get("username") or "").strip()
     new_password = body.get("new_password") or ""
     if not username or len(new_password) < 8:
@@ -928,7 +991,6 @@ async def reset_password(req: Request):
     user = await db.get_user_by_username(username)
     if not user:
         return JSONResponse({"error": "该账号不存在"}, status_code=404)
-    # Check new password != old password
     if auth_mod.check_password(new_password, user["password_hash"]):
         return JSONResponse({"error": "新密码不能与原密码一致"}, status_code=400)
     pw_hash = auth_mod.hash_password(new_password)
@@ -936,12 +998,14 @@ async def reset_password(req: Request):
     return {"ok": True}
 
 
-@app.post("/api/auth/check-username")
-async def check_username(req: Request):
-    """Quick check if username exists — used before full registration flow."""
-    body = await req.json()
-    username = (body.get("username") or "").strip()
-    if not username:
-        return {"exists": False}
-    user = await db.get_user_by_username(username)
-    return {"exists": user is not None}
+# ── Health + stats with metrics ─────────────────────────────────
+
+@app.get("/health")
+async def health():
+    db_ok = False
+    try:
+        db.pool()
+        db_ok = True
+    except RuntimeError:
+        pass
+    return {"ok": True, "db": db_ok}

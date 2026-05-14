@@ -1,5 +1,4 @@
 import { ref, computed } from 'vue'
-import { verifyToken } from '@/api'
 
 function safeGet(key) {
   try { return localStorage.getItem(key) } catch { return null }
@@ -11,35 +10,33 @@ function safeRemove(key) {
   try { localStorage.removeItem(key) } catch {}
 }
 
+// Token is now HttpOnly cookie (browser handles it automatically)
+// We only track the logged-in username locally for UI purposes
 const _loggedIn = ref(safeGet('duck_auth_user') || '')
-const _token = ref(safeGet('duck_auth_token') || '')
 
 export function useAuth() {
-  const authed = computed(() => !!_loggedIn.value && !!_token.value)
+  const authed = computed(() => !!_loggedIn.value)
   const username = computed(() => _loggedIn.value || '')
 
-  function setAuthed(user, token) {
+  function setAuthed(user) {
     _loggedIn.value = user
-    _token.value = token || ''
     safeSet('duck_auth_user', user)
-    safeSet('duck_auth_token', token || '')
   }
 
   function clearAuth() {
     _loggedIn.value = ''
-    _token.value = ''
     safeRemove('duck_auth_user')
-    safeRemove('duck_auth_token')
   }
 
   async function checkSession() {
-    if (!_loggedIn.value || !_token.value) return false
+    if (!_loggedIn.value) return false
     try {
-      const data = await verifyToken(_loggedIn.value, _token.value)
+      const { verifyToken } = await import('@/api')
+      const data = await verifyToken(_loggedIn.value, '')
       if (!data.valid) clearAuth()
       return data.valid
     } catch {
-      return true // network error = still show UI
+      return true
     }
   }
 

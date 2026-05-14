@@ -446,3 +446,11 @@ async def update_user_password(username: str, password_hash: str):
         "UPDATE duck.users SET password_hash = $1, token_hash = '' WHERE username = $2",
         password_hash, username,
     )
+
+
+async def get_user_by_token_hash(token_hash: str) -> dict | None:
+    row = await pool().fetchrow(
+        "SELECT id, username, role, is_active FROM duck.users WHERE token_hash = $1",
+        token_hash,
+    )
+    return dict(row) if row else None
