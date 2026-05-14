@@ -1,5 +1,12 @@
 const API_BASE = ''
 
+function authHeaders() {
+  const h = {}
+  const ck = sessionStorage.getItem('cloudKey')
+  if (ck) h['x-cloud-key'] = ck
+  return h
+}
+
 async function request(method, path, opts = {}) {
   const { body, headers = {}, params } = opts
   let url = `${API_BASE}${path}`
@@ -9,7 +16,7 @@ async function request(method, path, opts = {}) {
   }
   const res = await fetch(url, {
     method,
-    headers: { ...headers },
+    headers: { ...authHeaders(), ...headers },
     credentials: 'include',
     ...(body ? { body: JSON.stringify(body) } : {}),
   })
@@ -55,4 +62,59 @@ export function fetchConversation(id) {
 
 export function fetchUsage() {
   return request('GET', '/api/stats/usage').then(r => r.json())
+}
+
+// ── Auth Gate ──
+
+export function apiRegister(username, password, security_question, security_answer) {
+  return request('POST', '/api/auth/register', {
+    body: { username, password, security_question, security_answer },
+    headers: { 'Content-Type': 'application/json' },
+  }).then(r => r.json())
+}
+
+export function apiLogin(username, password) {
+  return request('POST', '/api/auth/login', {
+    body: { username, password },
+    headers: { 'Content-Type': 'application/json' },
+  }).then(r => r.json())
+}
+
+export function apiCaptcha() {
+  return request('POST', '/api/auth/captcha').then(r => r.json())
+}
+
+export function verifyToken(username, token) {
+  return request('POST', '/api/auth/verify', {
+    body: { username, token },
+    headers: { 'Content-Type': 'application/json' },
+  }).then(r => r.json())
+}
+
+export function apiGetSecurity(username) {
+  return request('POST', '/api/auth/security', {
+    body: { username },
+    headers: { 'Content-Type': 'application/json' },
+  }).then(r => r.json())
+}
+
+export function apiVerifySecurity(username, answer) {
+  return request('POST', '/api/auth/verify-security', {
+    body: { username, answer },
+    headers: { 'Content-Type': 'application/json' },
+  }).then(r => r.json())
+}
+
+export function apiResetPassword(username, newPassword) {
+  return request('POST', '/api/auth/reset-password', {
+    body: { username, new_password: newPassword },
+    headers: { 'Content-Type': 'application/json' },
+  }).then(r => r.json())
+}
+
+export function checkUsername(username) {
+  return request('POST', '/api/auth/check-username', {
+    body: { username },
+    headers: { 'Content-Type': 'application/json' },
+  }).then(r => r.json())
 }

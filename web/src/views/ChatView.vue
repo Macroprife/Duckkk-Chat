@@ -71,7 +71,7 @@
 
 <script setup>
 import { ref, onMounted, nextTick, watch } from 'vue'
-import { useAuth } from '@/composables/useAuth'
+import { useCloudKey } from '@/composables/useCloudKey'
 import { useModels } from '@/composables/useModels'
 import { useChat } from '@/composables/useChat'
 import { sendChatMessage } from '@/api'
@@ -79,7 +79,7 @@ import ChatHeader from '@/components/ChatHeader.vue'
 import MessageBubble from '@/components/MessageBubble.vue'
 import AuthGate from '@/components/AuthGate.vue'
 
-const { isAuthed, cloudKey, login } = useAuth()
+const { isAuthed, cloudKey, login } = useCloudKey()
 const { providers, currentModel, loading, load } = useModels()
 const { messages, streaming, addMessage, clearMessages, startStream } = useChat()
 

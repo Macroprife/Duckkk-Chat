@@ -1,10 +1,9 @@
 <template>
   <div class="flex flex-col h-full">
     <!-- Header -->
-    <div class="h-14 flex items-center px-4 border-b border-slate-800 shrink-0 bg-slate-900/40">
-      <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
-        ⚙️ 设置
-      </h2>
+    <div class="h-14 flex items-center gap-2 px-4 border-b border-slate-800 shrink-0 bg-slate-900/40">
+      <button class="btn-ghost p-1 text-lg leading-none" @click="$router.push('/')">←</button>
+      <h2 class="text-sm font-semibold text-slate-200">⚙️ 设置</h2>
     </div>
 
     <!-- Content -->
@@ -64,6 +63,15 @@
           <p v-else class="text-sm text-slate-500">暂无统计</p>
         </section>
 
+        <!-- Account -->
+        <section class="rounded-xl bg-slate-900/40 border border-slate-800/60 p-5">
+          <h3 class="text-sm font-semibold text-slate-200 mb-3">账户</h3>
+          <p class="text-sm text-slate-400 mb-3">当前用户：{{ username }}</p>
+          <button class="btn-ghost text-red-400 hover:text-red-300 hover:bg-red-900/20 border border-red-900/30 px-4 py-2 rounded-lg" @click="handleLogout">
+            退出登录
+          </button>
+        </section>
+
       </div>
     </div>
   </div>
@@ -71,10 +79,14 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
+import { useCloudKey } from '@/composables/useCloudKey'
 import { fetchUsage } from '@/api'
 
-const { isAuthed, logout, load } = useAuth()
+const router = useRouter()
+const { username, clearAuth } = useAuth()
+const { isAuthed, logout, load } = useCloudKey()
 const usage = ref(null)
 
 onMounted(async () => {
@@ -82,4 +94,8 @@ onMounted(async () => {
     usage.value = await fetchUsage()
   } catch {}
 })
+
+function handleLogout() {
+  clearAuth()
+}
 </script>

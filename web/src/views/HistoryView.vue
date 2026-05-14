@@ -1,10 +1,9 @@
 <template>
   <div class="flex flex-col h-full">
     <!-- Header -->
-    <div class="h-14 flex items-center px-4 border-b border-slate-800 shrink-0 bg-slate-900/40">
-      <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
-        🕐 对话历史
-      </h2>
+    <div class="h-14 flex items-center gap-2 px-4 border-b border-slate-800 shrink-0 bg-slate-900/40">
+      <button class="btn-ghost p-1 text-lg leading-none" @click="$router.push('/')">←</button>
+      <h2 class="text-sm font-semibold text-slate-200">🕐 对话历史</h2>
     </div>
 
     <!-- Content -->

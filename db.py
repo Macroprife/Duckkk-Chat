@@ -95,7 +95,19 @@ CREATE INDEX IF NOT EXISTS idx_usage_stats_model     ON duck.usage_stats(model_i
 CREATE INDEX IF NOT EXISTS idx_usage_stats_provider  ON duck.usage_stats(provider);
 
 -- v3: archived_at for conversation cleanup (no cascade data loss)
+
+-- v4: user accounts for auth gate
+CREATE TABLE IF NOT EXISTS duck.users (
+    token_hash      TEXT,
+    security_question TEXT,
+    security_answer  TEXT,
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username        TEXT UNIQUE NOT NULL,
+    password_hash   TEXT NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 ALTER TABLE duck.conversations ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+
 """
 
 
@@ -374,3 +386,63 @@ async def get_model_usage_stats(
         *params, limit,
     )
     return [dict(r) for r in rows]
+
+
+
+
+# ── User accounts ──────────────────────────────────────────────
+
+
+
+async def get_user_by_username(username: str) -> dict | None:
+    row = await pool().fetchrow(
+        "SELECT id, username, password_hash, security_question, security_answer, created_at FROM duck.users WHERE username = $1",
+        username,
+    )
+    return dict(row) if row else None
+
+
+async def set_user_token(username: str, token_hash: str):
+    await pool().execute(
+        "UPDATE duck.users SET token_hash = $1 WHERE username = $2",
+        token_hash, username,
+    )
+
+
+async def get_user_token_hash(username: str) -> str | None:
+    row = await pool().fetchrow(
+        "SELECT token_hash FROM duck.users WHERE username = $1", username,
+    )
+    return row["token_hash"] if row else None
+
+
+async def count_users() -> int:
+    row = await pool().fetchrow("SELECT COUNT(*) AS cnt FROM duck.users")
+    return row["cnt"] if row else 0
+
+
+async def create_user(username: str, password_hash: str, security_question: str, security_answer_hash: str) -> dict | None:
+    row = await pool().fetchrow(
+        """INSERT INTO duck.users (username, password_hash, security_question, security_answer)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (username) DO NOTHING
+           RETURNING id, username, created_at""",
+        username, password_hash, security_question, security_answer_hash,
+    )
+    return dict(row) if row else None
+
+
+async def get_user_security(username: str) -> dict | None:
+    row = await pool().fetchrow(
+        "SELECT security_question, security_answer FROM duck.users WHERE username = $1",
+        username,
+    )
+    return dict(row) if row else None
+
+
+async def update_user_password(username: str, password_hash: str):
+    # Also invalidate all existing tokens
+    await pool().execute(
+        "UPDATE duck.users SET password_hash = $1, token_hash = '' WHERE username = $2",
+        password_hash, username,
+    )

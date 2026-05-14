@@ -1,13 +1,11 @@
 <template>
   <aside class="w-60 bg-slate-900/80 border-r border-slate-800 flex flex-col shrink-0 hidden md:flex">
-    <!-- Logo -->
     <div class="h-14 flex items-center gap-2 px-4 border-b border-slate-800">
       <span class="text-xl">🦆</span>
       <span class="font-semibold text-duck-400">Duck</span>
       <span class="text-slate-300 font-semibold">Chat</span>
     </div>
 
-    <!-- Nav -->
     <nav class="flex-1 p-2 space-y-1">
       <router-link to="/" class="sidebar-link" :class="{ active: $route.name === 'chat' }">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
@@ -23,10 +21,26 @@
       </router-link>
     </nav>
 
-    <!-- Bottom status -->
-    <div class="p-3 border-t border-slate-800 text-xs text-slate-500 flex items-center gap-2">
-      <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-      系统正常
+    <div class="p-3 border-t border-slate-800">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+        <span class="text-xs text-slate-500 flex-1">系统正常</span>
+        <span class="text-xs text-slate-400 truncate max-w-[80px]">{{ username }}</span>
+      </div>
+      <button class="text-[11px] text-slate-600 hover:text-slate-400 transition-colors" @click="handleLogout">退出登录</button>
     </div>
   </aside>
 </template>
+
+<script setup>
+import { useRouter } from 'vue-router'
+import { useAuth } from '@/composables/useAuth'
+
+const router = useRouter()
+const { username, clearAuth } = useAuth()
+
+function handleLogout() {
+  clearAuth()
+  // App.vue will react: authed becomes false → shows AuthGate
+}
+</script>
