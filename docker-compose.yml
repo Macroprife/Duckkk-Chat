@@ -28,7 +28,7 @@ services:
       - ./db.py:/app/db.py:ro
       - ./auth.py:/app/auth.py:ro
       - ./requirements.txt:/app/requirements.txt:ro
-      - /etc/duck-secrets:/app/secrets:ro
+      - /home/user/duck-secrets:/app/secrets:ro
     depends_on:
       postgres:
         condition: service_healthy

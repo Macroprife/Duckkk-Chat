@@ -36,13 +36,14 @@ export function fetchModels(showCloud) {
   return request('GET', '/models', { params, headers }).then(r => r.json())
 }
 
-export function sendChatMessage(model, message, cloudKey) {
+export function sendChatMessage(model, message, conversationId, cloudKey, image) {
   const headers = { 'Content-Type': 'application/json' }
   if (cloudKey) headers['x-cloud-key'] = cloudKey
-  return request('POST', '/chat', {
-    body: { message, model },
-    headers,
-  }).then(r => r.body)
+  const body = { message, model }
+  if (conversationId) body.conversation_id = conversationId
+  if (image) body.image = image
+  return request('POST', '/chat', { body, headers })
+  // Caller: resp.headers.get('X-Conversation-Id') + resp.body
 }
 
 export function authCloud(key) {
@@ -52,8 +53,10 @@ export function authCloud(key) {
   })
 }
 
-export function fetchConversations() {
-  return request('GET', '/api/conversations').then(r => r.json())
+export function fetchConversations(limit) {
+  const params = {}
+  if (limit) params.limit = limit
+  return request('GET', '/api/conversations', { params }).then(r => r.json())
 }
 
 export function fetchConversation(id) {
@@ -62,6 +65,27 @@ export function fetchConversation(id) {
 
 export function fetchUsage() {
   return request('GET', '/api/stats/usage').then(r => r.json())
+}
+
+// ── Multi-session management ──
+
+export function apiCreateConversation(modelId) {
+  return request('POST', '/api/conversations', {
+    body: { model_id: modelId },
+    headers: { 'Content-Type': 'application/json' },
+  }).then(r => r.json())
+}
+
+export function apiUpdateConversation(id, title) {
+  return request('PATCH', `/api/conversations/${id}`, {
+    body: { title },
+    headers: { 'Content-Type': 'application/json' },
+  }).then(r => r.json())
+}
+
+export function apiDeleteConversation(id) {
+  return request('DELETE', `/api/conversations/${id}`)
+    .then(r => r.json())
 }
 
 // ── Auth Gate ──

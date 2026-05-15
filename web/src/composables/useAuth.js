@@ -10,22 +10,27 @@ function safeRemove(key) {
   try { localStorage.removeItem(key) } catch {}
 }
 
-// Token is now HttpOnly cookie (browser handles it automatically)
-// We only track the logged-in username locally for UI purposes
 const _loggedIn = ref(safeGet('duck_auth_user') || '')
+const _role = ref(safeGet('duck_auth_role') || 'user')
 
 export function useAuth() {
   const authed = computed(() => !!_loggedIn.value)
   const username = computed(() => _loggedIn.value || '')
+  const role = computed(() => _role.value || 'user')
+  const isAdmin = computed(() => _role.value === 'admin')
 
-  function setAuthed(user) {
+  function setAuthed(user, userRole) {
     _loggedIn.value = user
+    _role.value = userRole || 'user'
     safeSet('duck_auth_user', user)
+    safeSet('duck_auth_role', userRole || 'user')
   }
 
   function clearAuth() {
     _loggedIn.value = ''
+    _role.value = 'user'
     safeRemove('duck_auth_user')
+    safeRemove('duck_auth_role')
   }
 
   async function checkSession() {
@@ -40,5 +45,5 @@ export function useAuth() {
     }
   }
 
-  return { authed, username, setAuthed, clearAuth, checkSession }
+  return { authed, username, role, isAdmin, setAuthed, clearAuth, checkSession }
 }

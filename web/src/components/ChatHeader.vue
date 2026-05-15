@@ -1,5 +1,5 @@
 <template>
-  <div class="h-14 flex items-center gap-3 px-4 border-b border-slate-800 shrink-0 bg-slate-900/40">
+  <div class="h-14 flex items-center gap-3 px-4 border-b border-gray-200 shrink-0 bg-white">
     <!-- Mobile menu trigger -->
     <button class="md:hidden btn-ghost text-lg p-1" @click="$emit('toggle-mobile-menu')">☰</button>
 
@@ -15,7 +15,7 @@
     <div class="ml-auto flex items-center gap-2">
       <button
         class="btn-ghost flex items-center gap-1.5"
-        :class="cloudAuthed ? 'text-emerald-400 border border-emerald-800/50' : ''"
+        :class="cloudAuthed ? 'text-emerald-600 border border-emerald-200 bg-emerald-50' : ''"
         @click="$emit('toggle-cloud')"
       >
         <span v-if="cloudAuthed">✅</span>

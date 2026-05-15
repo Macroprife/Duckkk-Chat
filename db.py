@@ -107,6 +107,8 @@ CREATE TABLE IF NOT EXISTS duck.users (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE duck.conversations ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+ALTER TABLE duck.users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
+ALTER TABLE duck.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
 
 """
 
@@ -249,6 +251,53 @@ async def get_active_conversation(session_id: uuid.UUID) -> uuid.UUID | None:
         session_id,
     )
     return row["id"] if row else None
+
+
+# ── Multi-session management ────────────────────────────────────
+
+async def create_conversation(
+    session_id: uuid.UUID,
+    model_id: str,
+    provider: str,
+    title: str | None = None,
+) -> uuid.UUID:
+    row = await pool().fetchrow(
+        """
+        INSERT INTO duck.conversations (session_id, title, model_id, provider)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, created_at, updated_at
+        """,
+        session_id, title or "新对话", model_id, provider,
+    )
+    return row["id"]
+
+
+async def update_conversation_title(conversation_id: uuid.UUID, title: str) -> bool:
+    result = await pool().execute(
+        "UPDATE duck.conversations SET title = $1, updated_at = now() WHERE id = $2",
+        title, conversation_id,
+    )
+    return result != "UPDATE 0"
+
+
+async def archive_conversation(conversation_id: uuid.UUID) -> bool:
+    result = await pool().execute(
+        "UPDATE duck.conversations SET archived_at = now() WHERE id = $1 AND archived_at IS NULL",
+        conversation_id,
+    )
+    return result != "UPDATE 0"
+
+
+async def get_conversation_by_id(conversation_id: uuid.UUID, session_id: uuid.UUID) -> dict | None:
+    row = await pool().fetchrow(
+        """
+        SELECT id, title, model_id, provider, created_at, updated_at
+        FROM duck.conversations
+        WHERE id = $1 AND session_id = $2 AND archived_at IS NULL
+        """,
+        conversation_id, session_id,
+    )
+    return dict(row) if row else None
 
 
 # ── Message helpers ────────────────────────────────────────────
@@ -396,7 +445,7 @@ async def get_model_usage_stats(
 
 async def get_user_by_username(username: str) -> dict | None:
     row = await pool().fetchrow(
-        "SELECT id, username, password_hash, security_question, security_answer, created_at FROM duck.users WHERE username = $1",
+        "SELECT id, username, password_hash, security_question, security_answer, role, is_active, created_at FROM duck.users WHERE username = $1",
         username,
     )
     return dict(row) if row else None
@@ -454,3 +503,68 @@ async def get_user_by_token_hash(token_hash: str) -> dict | None:
         token_hash,
     )
     return dict(row) if row else None
+
+
+# ── Admin helpers ───────────────────────────────────────────────
+
+async def list_users(limit: int = 100, offset: int = 0) -> list[dict]:
+    rows = await pool().fetch(
+        """
+        SELECT id, username, role, is_active, created_at
+        FROM duck.users
+        ORDER BY created_at DESC
+        LIMIT $1 OFFSET $2
+        """,
+        limit, offset,
+    )
+    return [dict(r) for r in rows]
+
+
+async def count_users_total() -> int:
+    row = await pool().fetchrow("SELECT COUNT(*) AS cnt FROM duck.users")
+    return row["cnt"] if row else 0
+
+
+async def update_user_role(user_id: str, role: str) -> bool:
+    if role not in ("user", "admin"):
+        raise ValueError(f"invalid role: {role}")
+    result = await pool().execute(
+        "UPDATE duck.users SET role = $1 WHERE id = $2::uuid",
+        role, user_id,
+    )
+    return result != "UPDATE 0"
+
+
+async def set_user_active(user_id: str, is_active: bool) -> bool:
+    result = await pool().execute(
+        "UPDATE duck.users SET is_active = $1 WHERE id = $2::uuid",
+        is_active, user_id,
+    )
+    return result != "UPDATE 0"
+
+
+async def get_admin_stats() -> dict:
+    """Return aggregate counts for the admin dashboard."""
+    rows = await pool().fetch("""
+        SELECT
+            (SELECT COUNT(*) FROM duck.users) AS total_users,
+            (SELECT COUNT(*) FROM duck.conversations) AS total_conversations,
+            (SELECT COUNT(*) FROM duck.messages) AS total_messages,
+            (SELECT COUNT(*) FROM duck.usage_stats) AS total_usage_records,
+            COALESCE((SELECT SUM(tokens_prompt + tokens_completion) FROM duck.usage_stats), 0) AS total_tokens
+    """)
+    return dict(rows[0]) if rows else {}
+
+
+async def get_recent_usage(limit: int = 20) -> list[dict]:
+    rows = await pool().fetch(
+        """
+        SELECT id, model_id, provider, tokens_prompt, tokens_completion,
+               duration_ms, created_at
+        FROM duck.usage_stats
+        ORDER BY created_at DESC
+        LIMIT $1
+        """,
+        limit,
+    )
+    return [dict(r) for r in rows]

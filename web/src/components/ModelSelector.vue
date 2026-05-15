@@ -1,6 +1,6 @@
 <template>
   <select
-    class="bg-slate-900 text-slate-200 border border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-duck-400/60 cursor-pointer min-w-[140px]"
+    class="bg-white text-gray-700 border border-gray-300 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-duck-400 focus:ring-2 focus:ring-duck-200 cursor-pointer min-w-[140px] shadow-sm"
     :value="current"
     :disabled="loading"
     @change="$emit('change', $event.target.value)"
@@ -11,7 +11,7 @@
         v-for="m in g.models"
         :key="m.id"
         :value="m.id"
-      >{{ m.name }}{{ m.size ? ` (${m.size})` : '' }}{{ m.cloud ? ' ☁️' : '' }}</option>
+      >{{ m.name }}{{ m.size ? ` (${m.size})` : '' }}</option>
     </optgroup>
   </select>
 </template>

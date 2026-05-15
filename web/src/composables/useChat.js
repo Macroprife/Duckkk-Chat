@@ -59,8 +59,10 @@ export function useChat() {
   const messages = ref([])
   const streaming = ref(false)
 
-  function addMessage(text, role) {
-    messages.value.push({ text, role, id: Date.now() + Math.random() })
+  function addMessage(text, role, image) {
+    const msg = { text, role, id: Date.now() + Math.random() }
+    if (image) msg.image = image
+    messages.value.push(msg)
     return messages.value[messages.value.length - 1]
   }
 

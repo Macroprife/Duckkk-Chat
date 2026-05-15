@@ -10,6 +10,7 @@ import ipaddress
 import asyncio
 import re
 import hashlib
+import tempfile
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from collections import deque
@@ -330,12 +331,51 @@ function addMsg(text,role){const d=document.createElement("div");d.className="ms
 
 # ── App ──────────────────────────────────────────────────────────
 
+SECRET_ROTATION_INTERVAL = 1800  # 30 minutes
+
+
+def _write_secret(content: str):
+    """Atomically write secret to SECRET_FILE."""
+    try:
+        tmp = tempfile.NamedTemporaryFile(
+            dir=os.path.dirname(SECRET_FILE),
+            prefix=".cloud-secret.",
+            delete=False,
+            mode="w",
+        )
+        tmp.write(content)
+        tmp.flush()
+        os.fsync(tmp.fileno())
+        tmp.close()
+        os.replace(tmp.name, SECRET_FILE)
+    except OSError as exc:
+        logger.error("secret write failed: %s", exc)
+
+
+async def _secret_rotator(app_state):
+    """Background task: rotate cloud secret every ~2 minutes."""
+    app_state.rotation_version = 0
+    # Generate an initial secret if the file is empty
+    if not _get_cloud_key():
+        _write_secret(secrets.token_hex(8))
+    app_state.next_rotation_at = time.time() + SECRET_ROTATION_INTERVAL
+
+    while True:
+        await asyncio.sleep(SECRET_ROTATION_INTERVAL)
+        new_secret = secrets.token_hex(8)
+        _write_secret(new_secret)
+        app_state.rotation_version += 1
+        app_state.next_rotation_at = time.time() + SECRET_ROTATION_INTERVAL
+        logger.info("Cloud secret rotated (v%d)", app_state.rotation_version)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     timeout = httpx.Timeout(REQUEST_TIMEOUT, connect=10.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
         app.state.http = client
         app.state.db_ok = False
+        app.state.next_rotation_at = time.time() + SECRET_ROTATION_INTERVAL
         try:
             await db.init_pool()
             await db.migrate()
@@ -343,9 +383,18 @@ async def lifespan(app: FastAPI):
             logger.info("Database ready")
         except Exception as exc:
             logger.warning("Database unavailable: %s", exc)
+
+        # Start background secret rotator
+        rotator_task = asyncio.create_task(_secret_rotator(app.state))
+
         logger.info("Duck Chat ready")
         yield
         logger.info("Duck Chat closing")
+        rotator_task.cancel()
+        try:
+            await rotator_task
+        except asyncio.CancelledError:
+            pass
         if app.state.db_ok:
             await db.close_pool()
 
@@ -358,7 +407,7 @@ if ALLOWED_ORIGINS:
         CORSMiddleware,
         allow_origins=ALLOWED_ORIGINS,
         allow_credentials=True,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
         allow_headers=["Content-Type", "x-cloud-key"],
     )
 
@@ -366,6 +415,8 @@ if ALLOWED_ORIGINS:
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=32000)
     model: str = Field("", max_length=200)
+    conversation_id: str | None = None
+    image: str | None = None
 
 
 class AuthRequest(BaseModel):
@@ -467,7 +518,7 @@ async def list_models(request: Request):
                     models = [
                         {
                             "id": f"claw/{m['id'].replace('openclaw/', '')}",
-                            "name": f"🧠 {m['id'].replace('openclaw/', '')}",
+                            "name": m['id'].replace('openclaw/', ''),
                             "size": "",
                             "cloud": True,
                         }
@@ -533,21 +584,42 @@ async def chat(req: ChatRequest, http_request: Request, http_response: Response)
                 client_ip=ip,
                 user_agent=http_request.headers.get("user-agent"),
             )
-            # Reuse recent conversation for the same model when within idle window
-            conversation_id = await db.find_or_create_conversation(
-                session_id=session_id,
-                model_id=req.model,
-                provider=provider,
-                idle_seconds=CONVERSATION_IDLE_SECONDS,
-                first_message_excerpt=req.message[:80],
-            )
+
+            if req.conversation_id:
+                # Use specified conversation (ownership check)
+                try:
+                    cid = uuid.UUID(req.conversation_id)
+                except ValueError:
+                    raise HTTPException(400, "invalid conversation_id")
+                conv = await db.get_conversation_by_id(cid, session_id)
+                if not conv:
+                    raise HTTPException(404, "conversation not found")
+                conversation_id = cid
+            else:
+                # Reuse recent conversation for the same model when within idle window
+                conversation_id = await db.find_or_create_conversation(
+                    session_id=session_id,
+                    model_id=req.model,
+                    provider=provider,
+                    idle_seconds=CONVERSATION_IDLE_SECONDS,
+                    first_message_excerpt=req.message[:80],
+                )
+
             await db.insert_message(
                 conversation_id=conversation_id,
                 role="user",
                 content=req.message,
                 model_id=req.model,
                 provider=provider,
+                metadata={"image": req.image} if (req.image and req.image.startswith("data:image")) else None,
             )
+
+            # Update title if still default
+            if str(conversation_id) == req.conversation_id:
+                conv_data = await db.get_conversation_by_id(conversation_id, session_id)
+                if conv_data and conv_data.get("title") == "新对话":
+                    await db.update_conversation_title(conversation_id, req.message[:80])
+
             collector = StreamCollector(
                 conversation_id=conversation_id,
                 session_id=session_id,
@@ -555,21 +627,28 @@ async def chat(req: ChatRequest, http_request: Request, http_response: Response)
                 provider=provider,
                 ip=ip,
             )
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.error("DB error during chat setup: %s", exc)
             collector = None
 
     # ── Stream ──
     client: httpx.AsyncClient = app.state.http
+    image = req.image if req.image and req.image.startswith("data:image") else None
     if provider == "claw":
-        gen = _stream_claw(client, req.model, req.message, collector=collector)
+        gen = _stream_claw(client, req.model, req.message, image=image, collector=collector)
     else:
-        gen = _stream_ollama(client, req.model, req.message, collector=collector)
+        gen = _stream_ollama(client, req.model, req.message, image=image, collector=collector)
 
     resp = StreamingResponse(
         gen,
         media_type="text/plain; charset=utf-8",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "X-Conversation-Id": str(conversation_id) if conversation_id else "",
+        },
     )
     if session_key and sid_is_new:
         _set_session_cookie(resp, session_key)
@@ -581,6 +660,7 @@ async def _stream_ollama(
     model_id: str,
     message: str,
     *,
+    image: str | None = None,
     collector: StreamCollector | None = None,
 ) -> AsyncGenerator[str, None]:
     model_name = model_id.split("/", 1)[1]
@@ -588,9 +668,19 @@ async def _stream_ollama(
     headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
     if cfg["api_key"]:
         headers["Authorization"] = f"Bearer {cfg['api_key']}"
+    if image:
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": message},
+                {"type": "image_url", "image_url": {"url": image}},
+            ]
+        }]
+    else:
+        messages = [{"role": "user", "content": message}]
     payload = {
         "model": model_name,
-        "messages": [{"role": "user", "content": message}],
+        "messages": messages,
         "stream": True,
     }
 
@@ -642,13 +732,24 @@ async def _stream_claw(
     model_id: str,
     message: str,
     *,
+    image: str | None = None,
     collector: StreamCollector | None = None,
 ) -> AsyncGenerator[str, None]:
     agent = model_id.split("/", 1)[1]
     cfg = PROVIDERS["claw"]
+    if image:
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": message},
+                {"type": "image_url", "image_url": {"url": image}},
+            ]
+        }]
+    else:
+        messages = [{"role": "user", "content": message}]
     payload = {
         "model": f"openclaw/{agent}",
-        "messages": [{"role": "user", "content": message}],
+        "messages": messages,
         "stream": True,
     }
     headers = {
@@ -754,10 +855,12 @@ async def get_conversation(conv_id: str, request: Request):
         msgs = await db.get_conversation_messages(cid)
         out = []
         for m in msgs:
+            meta = m.get("metadata")
             out.append({
                 "id": str(m["id"]),
                 "role": m["role"],
                 "content": m["content"],
+                "image": (meta or {}).get("image") if meta else None,
                 "tokens_prompt": m.get("tokens_prompt"),
                 "tokens_completion": m.get("tokens_completion"),
                 "model_id": m.get("model_id"),
@@ -768,6 +871,119 @@ async def get_conversation(conv_id: str, request: Request):
         return {"messages": out}
     except Exception as exc:
         logger.error("get_conversation: %s", exc)
+        return JSONResponse({"error": "internal error"}, status_code=500)
+
+
+# ── Multi-session management ───────────────────────────────────
+
+CONV_CREATE_BODY_SCHEMA = {"type": "object", "properties": {"model_id": {"type": "string"}, "title": {"type": "string"}}}
+
+
+@app.post("/api/conversations")
+async def create_conversation(request: Request):
+    """Create a new empty conversation and return its ID.
+    Auto-creates session cookie if missing (same pattern as /chat).
+    """
+    if not getattr(request.app.state, "db_ok", False):
+        return JSONResponse({"error": "database unavailable"}, status_code=503)
+
+    body = await request.json()
+    model_id = body.get("model_id", "")
+    title = body.get("title", "新对话")
+    if not model_id:
+        return JSONResponse({"error": "model_id is required"}, status_code=400)
+
+    ip = _client_ip(request)
+    session_key, sid_is_new = _get_or_create_sid(request)
+    try:
+        session_id = await db.upsert_session(
+            session_key=session_key,
+            client_ip=ip,
+            user_agent=request.headers.get("user-agent"),
+        )
+        cid = await db.create_conversation(
+            session_id, model_id, model_id.split("/", 1)[0], title,
+        )
+        resp = JSONResponse({
+            "ok": True,
+            "conversation": {
+                "id": str(cid),
+                "title": title,
+                "model_id": model_id,
+            },
+        })
+        if sid_is_new:
+            _set_session_cookie(resp, session_key)
+        return resp
+    except Exception as exc:
+        logger.error("create_conversation: %s", exc)
+        return JSONResponse({"error": "internal error"}, status_code=500)
+
+
+@app.patch("/api/conversations/{conv_id}")
+async def rename_conversation(conv_id: str, request: Request):
+    """Rename a conversation (title only)."""
+    if not getattr(request.app.state, "db_ok", False):
+        return JSONResponse({"error": "database unavailable"}, status_code=503)
+    try:
+        cid = uuid.UUID(conv_id)
+    except ValueError:
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+
+    body = await request.json()
+    title = (body.get("title") or "").strip()
+    if not title:
+        return JSONResponse({"error": "title is required"}, status_code=400)
+    if len(title) > 200:
+        return JSONResponse({"error": "title too long"}, status_code=400)
+
+    sid = request.cookies.get(SESSION_COOKIE)
+    if not sid:
+        return JSONResponse({"error": "no session"}, status_code=403)
+
+    try:
+        owner = await db.pool().fetchrow(
+            """SELECT 1 FROM duck.conversations c
+               JOIN duck.sessions s ON s.id = c.session_id
+               WHERE c.id = $1 AND s.session_key = $2""",
+            cid, sid,
+        )
+        if not owner:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        await db.update_conversation_title(cid, title)
+        return {"ok": True}
+    except Exception as exc:
+        logger.error("rename_conversation: %s", exc)
+        return JSONResponse({"error": "internal error"}, status_code=500)
+
+
+@app.delete("/api/conversations/{conv_id}")
+async def delete_conversation(conv_id: str, request: Request):
+    """Archive (soft-delete) a conversation."""
+    if not getattr(request.app.state, "db_ok", False):
+        return JSONResponse({"error": "database unavailable"}, status_code=503)
+    try:
+        cid = uuid.UUID(conv_id)
+    except ValueError:
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+
+    sid = request.cookies.get(SESSION_COOKIE)
+    if not sid:
+        return JSONResponse({"error": "no session"}, status_code=403)
+
+    try:
+        owner = await db.pool().fetchrow(
+            """SELECT 1 FROM duck.conversations c
+               JOIN duck.sessions s ON s.id = c.session_id
+               WHERE c.id = $1 AND s.session_key = $2""",
+            cid, sid,
+        )
+        if not owner:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        await db.archive_conversation(cid)
+        return {"ok": True}
+    except Exception as exc:
+        logger.error("delete_conversation: %s", exc)
         return JSONResponse({"error": "internal error"}, status_code=500)
 
 
@@ -889,8 +1105,15 @@ async def register(request: Request):
     if not user:
         return JSONResponse({"error": "该用户名已被注册"}, status_code=409)
 
+    # First user → admin
+    if existing_users == 0:
+        await db.update_user_role(str(user["id"]), "admin")
+        role = "admin"
+    else:
+        role = "user"
+
     auth_mod2.auth_requests.labels(endpoint="register", status="success").inc()
-    return {"ok": True, "username": user["username"]}
+    return {"ok": True, "username": user["username"], "role": role}
 
 
 @app.post("/api/auth/login")
@@ -926,7 +1149,11 @@ async def login(request: Request, response: Response):
 
     auth_mod.login_attempts.labels(status="success").inc()
     auth_mod.auth_requests.labels(endpoint="login", status="success").inc()
-    return {"ok": True, "username": user["username"]}
+    return {
+        "ok": True,
+        "username": user["username"],
+        "role": user.get("role", "user"),
+    }
 
 
 @app.post("/api/auth/verify")
@@ -996,6 +1223,86 @@ async def reset_password(request: Request):
     pw_hash = auth_mod.hash_password(new_password)
     await db.update_user_password(username, pw_hash)
     return {"ok": True}
+
+
+# ── Admin endpoints ────────────────────────────────────────────
+
+import hashlib
+
+
+async def _require_admin(request: Request) -> str | None:
+    """Check HttpOnly session_token cookie → return username or None."""
+    raw_token = request.cookies.get("session_token", "")
+    if not raw_token:
+        return None
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    user = await db.get_user_by_token_hash(token_hash)
+    if not user or user.get("role") != "admin" or not user.get("is_active", True):
+        return None
+    return user["username"]
+
+
+@app.get("/api/admin/users")
+async def admin_list_users(request: Request, limit: int = 100, offset: int = 0):
+    admin = await _require_admin(request)
+    if not admin:
+        return JSONResponse({"error": "unauthorized"}, status_code=403)
+    users = await db.list_users(limit, offset)
+    total = await db.count_users_total()
+    return {"ok": True, "users": users, "total": total}
+
+
+@app.patch("/api/admin/users/{user_id}/role")
+async def admin_set_role(user_id: str, request: Request):
+    admin = await _require_admin(request)
+    if not admin:
+        return JSONResponse({"error": "unauthorized"}, status_code=403)
+    body = await request.json()
+    role = body.get("role", "")
+    if role not in ("user", "admin"):
+        return JSONResponse({"error": "invalid role"}, status_code=400)
+    ok = await db.update_user_role(user_id, role)
+    if not ok:
+        return JSONResponse({"error": "user not found"}, status_code=404)
+    return {"ok": True}
+
+
+@app.patch("/api/admin/users/{user_id}/ban")
+async def admin_toggle_ban(user_id: str, request: Request):
+    admin = await _require_admin(request)
+    if not admin:
+        return JSONResponse({"error": "unauthorized"}, status_code=403)
+    body = await request.json()
+    is_active = body.get("is_active", True)
+    ok = await db.set_user_active(user_id, bool(is_active))
+    if not ok:
+        return JSONResponse({"error": "user not found"}, status_code=404)
+    return {"ok": True}
+
+
+@app.get("/api/admin/stats")
+async def admin_stats(request: Request):
+    admin = await _require_admin(request)
+    if not admin:
+        return JSONResponse({"error": "unauthorized"}, status_code=403)
+    stats = await db.get_admin_stats()
+    recent = await db.get_recent_usage(20)
+    return {"ok": True, "stats": stats, "recent_usage": recent}
+
+
+# ── Cloud rotation status ──────────────────────────────────────
+
+@app.get("/api/cloud/rotation-status")
+async def cloud_rotation_status(request: Request):
+    now = time.time()
+    next_at = getattr(request.app.state, "next_rotation_at", now + 60)
+    remaining = max(0, next_at - now)
+    return {
+        "ok": True,
+        "next_rotation_at": next_at,
+        "seconds_remaining": int(remaining),
+        "rotation_version": getattr(request.app.state, "rotation_version", 0),
+    }
 
 
 # ── Health + stats with metrics ─────────────────────────────────

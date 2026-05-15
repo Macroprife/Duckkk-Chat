@@ -1,12 +1,12 @@
 <template>
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md">
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
     <div class="w-full max-w-sm mx-4 fade-in">
-      <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 shadow-2xl">
+      <div class="bg-white border border-[#e8e4df] rounded-2xl p-6 shadow-xl">
 
         <div class="text-center mb-5">
-          <span class="text-5xl block mb-2">🦆</span>
-          <h1 class="text-lg font-semibold text-slate-100">Duck Chat</h1>
-          <p class="text-xs text-slate-500 mt-1">{{ subtitle }}</p>
+          <img src="/duck-icon.svg" alt="Duck Chat" class="w-14 h-14 mx-auto mb-2" />
+          <h1 class="text-lg font-semibold text-gray-700">Duck Chat</h1>
+          <p class="text-xs text-gray-400 mt-1">{{ subtitle }}</p>
         </div>
 
         <!-- ===== LOGIN FORM ===== -->
@@ -14,13 +14,13 @@
           <div><input v-model="loginUser" class="input-field text-center" placeholder="用户名" autocomplete="username" autofocus /></div>
           <div class="relative">
             <input v-model="loginPass" :type="showLoginPw ? 'text' : 'password'" class="input-field text-center pr-10" placeholder="密码" autocomplete="current-password" />
-            <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-sm" @click="showLoginPw = !showLoginPw">{{ showLoginPw ? '🙈' : '👁️' }}</button>
+            <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm" @click="showLoginPw = !showLoginPw">{{ showLoginPw ? '🙈' : '👁️' }}</button>
           </div>
-          <p v-if="loginError" class="text-xs text-red-400 text-center whitespace-pre-wrap">{{ loginError }}</p>
+          <p v-if="loginError" class="text-xs text-red-500 text-center whitespace-pre-wrap">{{ loginError }}</p>
           <button type="submit" class="btn-primary w-full" :disabled="loginLoading">{{ loginLoading ? '登录中...' : '登录' }}</button>
           <button type="button" class="btn-ghost w-full text-sm" @click="goRegister1">没有账号？注册</button>
-          <button type="button" class="btn-ghost w-full text-xs text-slate-500" @click="goReset1">修改密码</button>
-          <button type="button" class="btn-ghost w-full text-xs text-slate-600 hover:text-slate-400" @click="testConnection">检测连接</button>
+          <button type="button" class="btn-ghost w-full text-xs text-gray-400" @click="goReset1">修改密码</button>
+          <button type="button" class="btn-ghost w-full text-xs text-gray-400 hover:text-gray-500" @click="testConnection">检测连接</button>
         </form>
 
         <!-- ===== REGISTER: username + password ===== -->
@@ -28,9 +28,9 @@
           <div><input v-model="regUser" class="input-field text-center" placeholder="用户名（字母数字，≤8位）" maxlength="8" autocomplete="off" /></div>
           <div class="relative">
             <input v-model="regPass" :type="showRegPw ? 'text' : 'password'" class="input-field text-center pr-10" placeholder="密码（≥8位）" autocomplete="new-password" />
-            <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-sm" @click="showRegPw = !showRegPw">{{ showRegPw ? '🙈' : '👁️' }}</button>
+            <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm" @click="showRegPw = !showRegPw">{{ showRegPw ? '🙈' : '👁️' }}</button>
           </div>
-          <p v-if="regError" class="text-xs text-red-400 text-center">{{ regError }}</p>
+          <p v-if="regError" class="text-xs text-red-500 text-center">{{ regError }}</p>
           <div class="flex gap-2 pt-1">
             <button type="button" class="btn-ghost flex-1" @click="flow='login';resetAll()">← 返回</button>
             <button type="submit" class="btn-primary flex-1">下一步</button>
@@ -50,7 +50,7 @@
             </select>
           </div>
           <div><input v-model="secAnswer" class="input-field text-center" placeholder="自定义答案（区分大小写）" /></div>
-          <p v-if="secError" class="text-xs text-red-400 text-center">{{ secError }}</p>
+          <p v-if="secError" class="text-xs text-red-500 text-center">{{ secError }}</p>
           <div class="flex gap-2 pt-1">
             <button type="button" class="btn-ghost flex-1" @click="flow='register-1';secError=''">← 上一步</button>
             <button type="submit" class="btn-primary flex-1">下一步</button>
@@ -60,12 +60,12 @@
         <!-- ===== CAPTCHA (shared: login + register) ===== -->
         <form v-else-if="flow === 'register-3' || flow === 'login-captcha'" @submit.prevent="handleCaptcha" class="space-y-3">
           <div class="text-center">
-            <p class="text-sm text-slate-400 mb-2">{{ flow === 'register-3' ? '请完成人机验证以注册' : '验证通过，请完成人机验证' }}</p>
-            <p class="text-2xl font-bold text-duck-300 my-3">{{ captchaQuestion }}</p>
+            <p class="text-sm text-gray-500 mb-2">{{ flow === 'register-3' ? '请完成人机验证以注册' : '验证通过，请完成人机验证' }}</p>
+            <p class="text-2xl font-bold text-duck-600 my-3">{{ captchaQuestion }}</p>
             <input v-model="captchaAnswer" type="number" class="input-field text-center w-24 mx-auto" placeholder="?" autofocus />
-            <p class="text-xs text-slate-500 mt-2">剩余尝试：{{ 3 - captchaAttempts }} 次</p>
+            <p class="text-xs text-gray-400 mt-2">剩余尝试：{{ 3 - captchaAttempts }} 次</p>
           </div>
-          <p v-if="captchaError" class="text-xs text-red-400 text-center">{{ captchaError }}</p>
+          <p v-if="captchaError" class="text-xs text-red-500 text-center">{{ captchaError }}</p>
           <div class="flex gap-2">
             <button type="button" class="btn-ghost flex-1" @click="cancelCaptcha">← 返回</button>
             <button type="submit" class="btn-primary flex-1" :disabled="captchaLoading">{{ captchaLoading ? '处理中...' : '确认' }}</button>
@@ -75,7 +75,7 @@
         <!-- ===== RESET: enter username ===== -->
         <form v-else-if="flow === 'reset-1'" @submit.prevent="checkResetUser" class="space-y-3">
           <div><input v-model="resetUser" class="input-field text-center" placeholder="输入要修改密码的账号" autocomplete="off" /></div>
-          <p v-if="resetError" class="text-xs text-red-400 text-center">{{ resetError }}</p>
+          <p v-if="resetError" class="text-xs text-red-500 text-center">{{ resetError }}</p>
           <div class="flex gap-2 pt-1">
             <button type="button" class="btn-ghost flex-1" @click="flow='login';resetAll()">← 返回登录</button>
             <button type="submit" class="btn-primary flex-1">下一步</button>
@@ -85,12 +85,12 @@
         <!-- ===== RESET: answer security question ===== -->
         <form v-else-if="flow === 'reset-2'" @submit.prevent="checkSecurityAnswer" class="space-y-3">
           <div class="text-center">
-            <p class="text-sm text-slate-400 mb-2">密保问题</p>
-            <p class="text-base font-medium text-slate-200">{{ resetQuestion }}</p>
+            <p class="text-sm text-gray-500 mb-2">密保问题</p>
+            <p class="text-base font-medium text-gray-700">{{ resetQuestion }}</p>
           </div>
           <div><input v-model="resetAnswer" class="input-field text-center" placeholder="输入答案（区分大小写）" /></div>
-          <p v-if="resetError" class="text-xs text-red-400 text-center">{{ resetError }}</p>
-          <p v-if="resetAttempts > 0" class="text-xs text-slate-500 text-center">剩余尝试：{{ 3 - resetAttempts }} 次</p>
+          <p v-if="resetError" class="text-xs text-red-500 text-center">{{ resetError }}</p>
+          <p v-if="resetAttempts > 0" class="text-xs text-gray-400 text-center">剩余尝试：{{ 3 - resetAttempts }} 次</p>
           <div class="flex gap-2 pt-1">
             <button type="button" class="btn-ghost flex-1" @click="flow='login';resetAll()">← 返回登录</button>
             <button type="submit" class="btn-primary flex-1">下一步</button>
@@ -101,9 +101,9 @@
         <form v-else-if="flow === 'reset-3'" @submit.prevent="handleResetPassword" class="space-y-3">
           <div class="relative">
             <input v-model="resetNewPass" :type="showResetPw ? 'text' : 'password'" class="input-field text-center pr-10" placeholder="新密码（≥8位）" autocomplete="new-password" />
-            <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-sm" @click="showResetPw = !showResetPw">{{ showResetPw ? '🙈' : '👁️' }}</button>
+            <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm" @click="showResetPw = !showResetPw">{{ showResetPw ? '🙈' : '👁️' }}</button>
           </div>
-          <p v-if="resetError" class="text-xs text-red-400 text-center">{{ resetError }}</p>
+          <p v-if="resetError" class="text-xs text-red-500 text-center">{{ resetError }}</p>
           <div class="flex gap-2 pt-1">
             <button type="button" class="btn-ghost flex-1" @click="flow='login';resetAll()">← 返回登录</button>
             <button type="submit" class="btn-primary flex-1" :disabled="resetLoading">{{ resetLoading ? '修改中...' : '确认修改' }}</button>
@@ -168,11 +168,11 @@ async function handleLogin() {
   try {
     const data = await apiLogin(u, p)
     if (data && data.ok) {
-      // Password correct → show captcha
       loginLoading.value = false
       loginPass.value = ''
       captchaMode.value = 'login'
       captchaToken.value = data.username
+      captchaRole.value = data.role || 'user'
       flow.value = 'login-captcha'
       await loadCaptcha()
     } else {
@@ -221,11 +221,10 @@ async function goRegister2() {
   if (!/^[a-zA-Z0-9]+$/.test(u)) { regError.value = '用户名只能使用字母和数字'; return }
   if (p.length < 8) { regError.value = '密码不少于8个字符'; return }
   regError.value = ''
-  // Quick username availability check
   try {
     const data = await checkUsername(u)
     if (data.exists) { regError.value = '该用户名已存在'; return }
-  } catch { /* proceed anyway, backend will validate */ }
+  } catch { /* proceed anyway */ }
   flow.value = 'register-2'
 }
 function goRegister3() {
@@ -238,6 +237,7 @@ function goRegister3() {
 // Captcha
 const captchaMode = ref('login')
 const captchaToken = ref('')
+const captchaRole = ref('user')
 const captchaQuestion = ref(''); const captchaAnswer = ref('')
 const captchaError = ref(''); const captchaLoading = ref(false)
 const captchaAttempts = ref(0)
@@ -280,10 +280,9 @@ async function handleCaptcha() {
     captchaError.value = `答案错误，剩余 ${3 - captchaAttempts.value} 次`
     await loadCaptcha(); return
   }
-  // Captcha correct — proceed
   captchaLoading.value = true
   if (isLogin) {
-    setAuthed(captchaToken.value)
+    setAuthed(captchaToken.value, captchaRole.value)
     emit('authed')
   } else {
     try {
