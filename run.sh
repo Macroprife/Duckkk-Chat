@@ -66,7 +66,7 @@ if [ -n "$TUNNEL_URL" ]; then
   echo -e "  ${CYAN}${TUNNEL_URL}${NC}"
   echo ""
 fi
-PASSWORD=$(cat ~/duck-secrets/cloud-secret.txt 2>/dev/null || cat /tmp/duck-cloud-secret.txt 2>/dev/null || echo '查看 cat ~/duck-secrets/cloud-secret.txt')
+PASSWORD=$(cat ~/.duck-secrets/cloud-secret.txt 2>/dev/null || cat /tmp/duck-cloud-secret.txt 2>/dev/null || echo '查看 cat ~/.duck-secrets/cloud-secret.txt')
 echo -e "  ${YELLOW}🔑 云端密码: ${PASSWORD}${NC}"
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

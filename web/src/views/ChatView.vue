@@ -39,6 +39,7 @@
         </div>
         <h1 class="text-2xl font-semibold text-gray-800 mb-1">Duck Chat</h1>
         <p class="text-sm text-gray-400 mb-8">你的本地 AI 助手 · 基于 Ollama + OpenClaw</p>
+        <p class="text-xs text-amber-500 mb-6">温馨提示：建议在模型回答生成完毕后再进行对话切换，存在双行输出</p>
 
         <!-- Pill search input -->
         <div class="relative">
@@ -197,18 +198,29 @@
               @keydown.enter.prevent="send"
             />
             <button
+              v-if="!streaming"
               type="button"
               class="absolute right-1.5 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-lg transition-all duration-150"
-              :class="inputText.trim() && !streaming
+              :class="inputText.trim()
                 ? 'bg-duck-500 text-white hover:bg-duck-600 shadow-sm'
                 : 'text-gray-300 cursor-default'"
-              :disabled="!inputText.trim() || !currentModel || streaming"
+              :disabled="!inputText.trim() || !currentModel"
               @click="send"
             >
-              <svg v-if="!streaming" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 12h14m-7-7l7 7-7 7"/>
               </svg>
-              <span v-else class="w-4 h-4 block rounded-full border-2 border-t-transparent border-current animate-spin"></span>
+            </button>
+            <button
+              v-else
+              type="button"
+              class="absolute right-1.5 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-lg bg-red-500 text-white hover:bg-red-600 shadow-sm transition-all duration-150"
+              @click="stopStream"
+              title="停止生成"
+            >
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="6" y="6" width="12" height="12" rx="2"/>
+              </svg>
             </button>
           </div>
         </div>
@@ -233,7 +245,7 @@ import Sidebar from '@/components/Sidebar.vue'
 
 const { isAuthed, cloudKey, login, logout } = useCloudKey()
 const { providers, currentModel, loading, load } = useModels()
-const { messages, streaming, addMessage, clearMessages, startStream } = useChat()
+const { messages, streaming, addMessage, clearMessages, startStream, stopStream, createAbortSignal } = useChat()
 const {
   conversations,
   activeConversationId,
@@ -381,7 +393,8 @@ async function send() {
 
   try {
     console.log('[duck] sending...', selectedImage.value ? 'with image' : 'text only')
-    const resp = await sendChatMessage(currentModel.value, msg, convId, cloudKey.value, selectedImage.value)
+    const signal = createAbortSignal()
+    const resp = await sendChatMessage(currentModel.value, msg, convId, cloudKey.value, selectedImage.value, signal)
     clearImage()
     const rid = resp.headers.get('X-Conversation-Id')
     if (rid && rid !== activeConversationId.value) setActive(rid)

@@ -3,3 +3,6 @@ uvicorn[standard]==0.46.0
 httpx==0.28.1
 pydantic==2.13.4
 asyncpg==0.30.0
+bcrypt>=5.0.0
+prometheus-client>=0.20.0
+slowapi>=0.1.9

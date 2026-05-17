@@ -8,7 +8,7 @@ function authHeaders() {
 }
 
 async function request(method, path, opts = {}) {
-  const { body, headers = {}, params } = opts
+  const { body, headers = {}, params, signal } = opts
   let url = `${API_BASE}${path}`
   if (params) {
     const qs = new URLSearchParams(params).toString()
@@ -18,6 +18,7 @@ async function request(method, path, opts = {}) {
     method,
     headers: { ...authHeaders(), ...headers },
     credentials: 'include',
+    signal,
     ...(body ? { body: JSON.stringify(body) } : {}),
   })
   if (!res.ok) {
@@ -36,13 +37,13 @@ export function fetchModels(showCloud) {
   return request('GET', '/models', { params, headers }).then(r => r.json())
 }
 
-export function sendChatMessage(model, message, conversationId, cloudKey, image) {
+export function sendChatMessage(model, message, conversationId, cloudKey, image, signal) {
   const headers = { 'Content-Type': 'application/json' }
   if (cloudKey) headers['x-cloud-key'] = cloudKey
   const body = { message, model }
   if (conversationId) body.conversation_id = conversationId
   if (image) body.image = image
-  return request('POST', '/chat', { body, headers })
+  return request('POST', '/chat', { body, headers, signal })
   // Caller: resp.headers.get('X-Conversation-Id') + resp.body
 }
 

@@ -58,6 +58,7 @@ export function renderMarkdown(text) {
 export function useChat() {
   const messages = ref([])
   const streaming = ref(false)
+  const abortController = ref(null)
 
   function addMessage(text, role, image) {
     const msg = { text, role, id: Date.now() + Math.random() }
@@ -70,9 +71,28 @@ export function useChat() {
     messages.value = []
   }
 
+  function stopStream() {
+    if (abortController.value) {
+      abortController.value.abort()
+      abortController.value = null
+    }
+  }
+
+  function createAbortSignal() {
+    abortController.value = new AbortController()
+    return abortController.value.signal
+  }
+
   async function startStream(readableStream, bubble) {
     streaming.value = true
-    const reader = readableStream.getReader()
+    let reader
+    try {
+      reader = readableStream.getReader()
+    } catch (e) {
+      bubble.text = '[已取消]'
+      streaming.value = false
+      return
+    }
     const decoder = new TextDecoder()
     let fullText = ''
 
@@ -86,16 +106,20 @@ export function useChat() {
         await nextTick()
       }
     } catch (e) {
-      bubble.text = `[网络错误: ${e.message}]`
-      bubble.role = 'error'
+      if (e.name === 'AbortError') {
+        bubble.text = fullText || '[已取消]'
+      } else {
+        bubble.text = `[网络错误: ${e.message}]`
+        bubble.role = 'error'
+      }
     } finally {
       streaming.value = false
+      abortController.value = null
     }
 
-    // Final markdown render
     bubble.text = fullText
     return fullText
   }
 
-  return { messages, streaming, addMessage, clearMessages, startStream, renderMarkdown }
+  return { messages, streaming, addMessage, clearMessages, startStream, stopStream, createAbortSignal, renderMarkdown }
 }
