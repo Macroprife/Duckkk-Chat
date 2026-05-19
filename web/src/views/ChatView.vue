@@ -351,12 +351,17 @@ async function loadActiveConversation() {
 
 function onModelChange(val) { currentModel.value = val }
 function onNewChat() {
+  stopStream()
   clearMessages()
   clearImage()
   mode.value = 'search'
   nextTick(() => scrollToBottom())
 }
-function onSwitchConv() { mode.value = 'chat'; loadActiveConversation() }
+function onSwitchConv() {
+  stopStream()
+  mode.value = 'chat'
+  loadActiveConversation()
+}
 
 function useSuggestion(s) {
   inputText.value = s.text

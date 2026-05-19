@@ -173,6 +173,7 @@ async function handleLogin() {
       captchaMode.value = 'login'
       captchaToken.value = data.username
       captchaRole.value = data.role || 'user'
+      _loginToken = data.token || ''
       flow.value = 'login-captcha'
       await loadCaptcha()
     } else {
@@ -236,6 +237,7 @@ function goRegister3() {
 
 // Captcha
 const captchaMode = ref('login')
+let _loginToken = ''
 const captchaToken = ref('')
 const captchaRole = ref('user')
 const captchaQuestion = ref(''); const captchaAnswer = ref('')
@@ -282,7 +284,8 @@ async function handleCaptcha() {
   }
   captchaLoading.value = true
   if (isLogin) {
-    setAuthed(captchaToken.value, captchaRole.value)
+    setAuthed(captchaToken.value, captchaRole.value, _loginToken)
+    _loginToken = ''
     emit('authed')
   } else {
     try {

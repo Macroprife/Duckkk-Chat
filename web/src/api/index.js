@@ -1,12 +1,5 @@
 const API_BASE = ''
 
-function authHeaders() {
-  const h = {}
-  const ck = sessionStorage.getItem('cloudKey')
-  if (ck) h['x-cloud-key'] = ck
-  return h
-}
-
 async function request(method, path, opts = {}) {
   const { body, headers = {}, params, signal } = opts
   let url = `${API_BASE}${path}`
@@ -16,7 +9,7 @@ async function request(method, path, opts = {}) {
   }
   const res = await fetch(url, {
     method,
-    headers: { ...authHeaders(), ...headers },
+    headers,
     credentials: 'include',
     signal,
     ...(body ? { body: JSON.stringify(body) } : {}),
@@ -44,7 +37,6 @@ export function sendChatMessage(model, message, conversationId, cloudKey, image,
   if (conversationId) body.conversation_id = conversationId
   if (image) body.image = image
   return request('POST', '/chat', { body, headers, signal })
-  // Caller: resp.headers.get('X-Conversation-Id') + resp.body
 }
 
 export function authCloud(key) {

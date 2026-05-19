@@ -36,9 +36,8 @@ docker rm -f duck-tunnel 2>/dev/null || true
 kill "$(cat /tmp/duck-tunnel.pid 2>/dev/null)" 2>/dev/null || true
 
 docker run -d --name duck-tunnel --restart unless-stopped \
-  --dns 1.1.1.1 --dns-opt use-vc \
   --network host \
-  cloudflare/cloudflared:latest tunnel --url http://localhost:8080 >/dev/null 2>&1
+  cloudflare/cloudflared:latest tunnel --url http://localhost:8080 --protocol http2 >/dev/null 2>&1
 
 echo -n "⏳ 等待隧道建立"
 TUNNEL_URL=""
@@ -66,7 +65,7 @@ if [ -n "$TUNNEL_URL" ]; then
   echo -e "  ${CYAN}${TUNNEL_URL}${NC}"
   echo ""
 fi
-PASSWORD=$(cat ~/.duck-secrets/cloud-secret.txt 2>/dev/null || cat /tmp/duck-cloud-secret.txt 2>/dev/null || echo '查看 cat ~/.duck-secrets/cloud-secret.txt')
+PASSWORD=$(cat ./secrets/cloud-secret.txt 2>/dev/null || echo '未设置')
 echo -e "  ${YELLOW}🔑 云端密码: ${PASSWORD}${NC}"
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

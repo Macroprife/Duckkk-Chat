@@ -23,12 +23,13 @@
       <!-- Rendered markdown for assistant messages -->
       <div v-else-if="msg.role === 'assistant'" class="markdown-body text-sm leading-relaxed" v-html="rendered"></div>
 
-      <!-- Image in user messages -->
-      <div v-if="msg.image" class="mb-2">
-        <img :src="msg.image" class="max-w-full max-h-64 rounded-lg object-contain border border-gray-200" />
-      </div>
-      <!-- User message text (always show, whether image present or not) -->
-      <div class="whitespace-pre-wrap break-words leading-relaxed text-sm">{{ text }}</div>
+      <!-- Image + plain text for user / error messages -->
+      <template v-else>
+        <div v-if="msg.image" class="mb-2">
+          <img :src="msg.image" class="max-w-full max-h-64 rounded-lg object-contain border border-gray-200" />
+        </div>
+        <div v-if="text" class="whitespace-pre-wrap break-words leading-relaxed text-sm">{{ text }}</div>
+      </template>
 
       <!-- Copy button on assistant messages -->
       <button

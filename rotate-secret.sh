@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # 🕐 Duck Chat 云端密码轮换
-# 每小时执行一次。原子写入 /var/lib/duck-secrets/cloud-secret.txt，
+# 每小时执行一次。原子写入 ./secrets/cloud-secret.txt，
 # 容器通过 ro bind mount 读取（写完立即可见）。
 
 set -euo pipefail
 
-SECRETS_DIR="${DUCK_SECRETS_DIR:-$HOME/.duck-secrets}"
+SECRETS_DIR="${DUCK_SECRETS_DIR:-./secrets}"
 SECRET_FILE="$SECRETS_DIR/cloud-secret.txt"
-LEGACY_LINK="/tmp/duck-cloud-secret.txt"
+LEGACY_LINK="./secrets/cloud-secret.txt"
 
 mkdir -p "$SECRETS_DIR"
 chmod 755 "$SECRETS_DIR"

@@ -47,7 +47,7 @@ echo ""
 bash "$ROOT/rotate-secret.sh" 2>/dev/null || true
 
 # ── 5. 输出 ──────────────────────────────────────────────
-PASSWORD=$(cat ~/.duck-secrets/cloud-secret.txt 2>/dev/null || cat /tmp/duck-cloud-secret.txt 2>/dev/null || echo '查看 cat ~/.duck-secrets/cloud-secret.txt')
+PASSWORD=$(cat ./secrets/cloud-secret.txt 2>/dev/null || cat ./secrets/cloud-secret.txt 2>/dev/null || echo '查看 cat ./secrets/cloud-secret.txt')
 
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

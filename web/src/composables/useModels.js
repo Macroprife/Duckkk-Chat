@@ -11,8 +11,19 @@ export function useModels() {
     try {
       const data = await apiFetchModels(showCloud)
       providers.value = data.models || []
-      // auto-select first model
-      if (providers.value.length > 0 && providers.value[0].models.length > 0) {
+      // Try restoring last-used model from sessionStorage first
+      const lastModel = sessionStorage.getItem('duck_last_model')
+      let found = false
+      if (lastModel) {
+        for (const p of providers.value) {
+          for (const m of p.models) {
+            if (m.id === lastModel) { currentModel.value = lastModel; found = true; break }
+          }
+          if (found) break
+        }
+      }
+      // Fallback to first model
+      if (!found && providers.value.length > 0 && providers.value[0].models.length > 0) {
         currentModel.value = providers.value[0].models[0].id
       }
     } catch (e) {

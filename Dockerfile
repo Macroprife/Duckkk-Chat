@@ -13,7 +13,8 @@ RUN pip install -r requirements.txt
 
 # Run as non-root
 RUN useradd -m -u 1000 appuser
-COPY --chown=appuser:appuser app.py db.py init.sql .
+COPY --chown=appuser:appuser app.py db.py auth.py init.sql .
+COPY --chown=appuser:appuser duckapp/ ./duckapp/
 USER appuser
 
 EXPOSE 8000

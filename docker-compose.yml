@@ -27,8 +27,9 @@ services:
       - ./app.py:/app/app.py:ro
       - ./db.py:/app/db.py:ro
       - ./auth.py:/app/auth.py:ro
+      - ./duckapp:/app/duckapp:ro
       - ./requirements.txt:/app/requirements.txt:ro
-      - /home/macro/.duck-secrets:/app/secrets:ro
+      - ./secrets:/app/secrets:ro  # 创建 secrets/ 目录，内含 cloud-secret.txt
     depends_on:
       postgres:
         condition: service_healthy
